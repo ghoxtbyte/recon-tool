@@ -1,0 +1,11 @@
+# Temporary output files
+*.swp
+*.tmp
+*~
+*.bak
+sublist.txt
+shodax.txt
+subs_domain.txt
+alienvault_subs.txt
+urlscan_subs.txt
+all_subdomains.txt
