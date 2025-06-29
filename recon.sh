@@ -9,7 +9,7 @@ process_domain() {
     subfinder -d "$domain" --all --recursive -o sublist.txt -silent
 
     # Run assetfinder
-    # assetfinder "$domain" >> sublist.txt
+    assetfinder "$domain" >> sublist.txt
 
     # Run shodanx
     shodanx subdomain -d "$domain" -ra -o shodax.txt 2>/dev/null
