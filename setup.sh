@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "[+] Starting setup for ultimate_hunt.sh..."
 apt update && sudo apt upgrade -y || { echo "[-] Apt failed"; exit 1; }
-apt install -y pipx python3-pip git curl wget build-essential || { echo "[-] Install failed"; exit 1; }
+apt install -y python3-pip git curl wget build-essential || { echo "[-] Install failed"; exit 1; }
 dpkg -l | grep golang && sudo apt remove golang -y
 rm -rf /usr/lib/go-* /usr/local/go
 wget -q https://go.dev/dl/go1.22.1.linux-amd64.tar.gz && [ -s go1.22.1.linux-amd64.tar.gz ] || { echo "[-] Go download failed"; exit 1; }
@@ -14,7 +14,7 @@ echo "export PATH=\$PATH:/usr/local/go/bin:\$HOME/go/bin" >> ~/.bashrc && source
 apt install -y ffuf jq || { echo "[-] FFUF/JQ install failed"; exit 1; }
 pipx install arjun
 pipx ensurepath && source ~/.*rc
-pip install git+https://github.com/sanjai-AK47/ShodanX
+pip install git+https://github.com/sanjai-AK47/ShodanX pipx
 for tool in httpx naabu dnsx nuclei katana; do go install "github.com/projectdiscovery/$tool/cmd/$tool@latest" || echo "[-] $tool failed"; done
 go install -v github.com/lc/gau/v2/cmd/gau@latest
 go install -v github.com/tomnomnom/assetfinder@latest
