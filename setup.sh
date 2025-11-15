@@ -1,7 +1,7 @@
 #!/bin/bash
 echo "[+] Starting setup for ultimate_hunt.sh..."
 apt update && sudo apt upgrade -y || { echo "[-] Apt failed"; exit 1; }
-apt install -y python3-pip git curl wget build-essential || { echo "[-] Install failed"; exit 1; }
+apt install -y python3-pip python3-venv git curl wget build-essential || { echo "[-] Install failed"; exit 1; }
 dpkg -l | grep golang && sudo apt remove golang -y
 rm -rf /usr/lib/go-* /usr/local/go
 wget -q https://go.dev/dl/go1.22.1.linux-amd64.tar.gz && [ -s go1.22.1.linux-amd64.tar.gz ] || { echo "[-] Go download failed"; exit 1; }
