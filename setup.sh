@@ -12,9 +12,10 @@ echo "export PATH=\$PATH:/usr/local/go/bin:\$HOME/go/bin" >> ~/.bashrc && source
 [ -n "$ZSH_VERSION" ] && echo "export PATH=\$PATH:/usr/local/go/bin:\$HOME/go/bin" >> ~/.zshrc && source ~/.zshrc
 /usr/local/go/bin/go version || { echo "[-] Go not installed"; exit 1; }
 apt install -y ffuf jq || { echo "[-] FFUF/JQ install failed"; exit 1; }
+pip install pipx
 pipx install arjun
 pipx ensurepath && source ~/.*rc
-pip install git+https://github.com/sanjai-AK47/ShodanX pipx
+pip install git+https://github.com/AN0N9M0US/ShodanX.git
 for tool in httpx naabu dnsx nuclei katana; do go install "github.com/projectdiscovery/$tool/cmd/$tool@latest" || echo "[-] $tool failed"; done
 go install -v github.com/lc/gau/v2/cmd/gau@latest
 go install -v github.com/tomnomnom/assetfinder@latest
