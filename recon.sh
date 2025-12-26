@@ -132,7 +132,7 @@ process_domain() {
     echo "Merging results for $domain into $FINAL_OUTPUT..."
     
     # Concatenate all temp files, suppress errors, filter unique, append
-    cat temp_*.txt 2>/dev/null | anew "$FINAL_OUTPUT"
+    cat temp_*.txt 2>/dev/null | awk 'NF' | anew "$FINAL_OUTPUT"
 
     # 3. Cleanup for this domain
     rm -f temp_*.txt
