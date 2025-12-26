@@ -8,9 +8,12 @@ A simple yet powerful bash-based subdomain reconnaissance tool for bug bounty an
   - subfinder
   - assetfinder
   - crt.sh
-  - ShodanX
+  - Amass
+  - Findomain
   - AlienVault OTX
   - urlscan.io
+  - AbuseIPDB
+  - WayBackMachine
 - Merge and de-duplicate results automatically
 - CLI support for both single domains and domain lists
 
@@ -29,6 +32,7 @@ For a **single domain**:
 
 ```bash
 chmod +x recon.sh
+./recon.sh -h
 ./recon.sh -d example.com
 ```
 
@@ -38,13 +42,19 @@ For a **list of domains** (one per line):
 ./recon.sh -l domains.txt
 ```
 
+**Exclude:**
+
+```bash
+./recon.sh -d example.com -e Amass,wayback
+```
+
 ## 📁 Output
 
 The script generates:
 
 * `all_subdomains.txt`: final list of merged and unique subdomains
 
-Temporary files (`sublist.txt`, `shodax.txt`, etc.) are removed automatically.
+Temporary files (`sublist.txt`, `assetfinder.txt`, etc.) are removed automatically.
 
 ## ✅ Requirements
 
@@ -52,7 +62,8 @@ Tools required (installed by `setup.sh`):
 
 * [subfinder](https://github.com/projectdiscovery/subfinder)
 * [assetfinder](https://github.com/tomnomnom/assetfinder)
-* [ShodanX](https://github.com/sanjai-AK47/ShodanX)
+* [findomain](https://github.com/Edu4rdSHL/findomain)
+* [amass](https://github.com/OWASP/Amass)
 * jq, curl, grep, sed, anew, ffuf, arjun, etc.
 
 ## 📄 License
