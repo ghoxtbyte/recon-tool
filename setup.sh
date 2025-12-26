@@ -37,7 +37,7 @@ echo -e "${YELLOW}[*] Configuration will be saved to: $SHELL_CONFIG${NC}"
 
 # --- 1. Update System & Install Base Dependencies ---
 echo -e "${GREEN}[*] Updating system and installing base dependencies...${NC}"
-sudo apt update && sudo apt upgrade -y
+sudo apt update
 sudo apt install -y python3-pip python3-venv git curl wget build-essential jq parallel unzip ffuf libpcap-dev || { echo -e "${RED}[-] Apt install failed${NC}"; exit 1; }
 
 # --- 2. Install/Update Golang (Clean Install) ---
