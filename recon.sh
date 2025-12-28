@@ -2,6 +2,7 @@
 
 # --- Configuration & Banner ---
 FINAL_OUTPUT="all_subdomains.txt"
+WILDCARD_OUTPUT="wildcard_domains.txt" 
 EXCLUDE_LIST=""
 RUN_HTTPX=false 
 
@@ -14,10 +15,11 @@ END="\e[0m"
 echo -e "${BOLD}${GREEN}"
 echo "    ULTIMATE RECON TOOL (Merged Edition)"
 echo "    Integrates Logic from SubEnum & Recon"
+echo "    + Wildcard Recursive Scanning"
 echo -e "${END}"
 
 # --- Safety Trap ---
-trap "rm -f temp_*.txt; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${END}'; exit" INT TERM
+trap "rm -f temp_*.txt wildcard_temp_*.txt; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${END}'; exit" INT TERM
 
 # --- Helper Functions ---
 
@@ -145,6 +147,12 @@ if [ -f "$FINAL_OUTPUT" ]; then
     rm "$FINAL_OUTPUT"
 fi
 
+# Initialize/Clear wildcard domains file
+if [ -f "$WILDCARD_OUTPUT" ]; then
+    echo "Found old $WILDCARD_OUTPUT. Removing it..."
+    rm "$WILDCARD_OUTPUT"
+fi
+
 # Parse Arguments
 domains=()
 
@@ -192,13 +200,70 @@ if [ ${#domains[@]} -eq 0 ]; then
     exit 1
 fi
 
-# Process Loop
+# Process Loop (Initial Pass)
 for domain in "${domains[@]}"; do
     process_domain "$domain"
 done
 
+# --- Wildcard Recursive Processing ---
+# Tracks scanned domains to prevent infinite loops on the same domain
+touch processed_tracking_list.tmp
+
+echo "------------------------------------------------"
+echo -e "${BOLD}${GREEN}[+] Checking for Wildcard (*) Domains to process recursively...${END}"
+
+while true; do
+    # 1. Find lines starting with *. in the main output
+    if ! grep -q "^\*\." "$FINAL_OUTPUT"; then
+        # No more wildcards found, break the loop
+        break
+    fi
+
+    # Extract wildcards
+    grep "^\*\." "$FINAL_OUTPUT" | sort -u > wildcard_temp_found.txt
+    
+    # Show what we found
+    count=$(wc -l < wildcard_temp_found.txt)
+    echo -e "${BOLD}Found $count wildcard domain(s). Extracting and Re-scanning...${END}"
+
+    # 2. Append them to WILDCARD_OUTPUT
+    cat wildcard_temp_found.txt | anew "$WILDCARD_OUTPUT"
+
+    # 3. Remove them from FINAL_OUTPUT (Sanitize the main list)
+    grep -v "^\*\." "$FINAL_OUTPUT" > wildcard_temp_clean.txt
+    mv wildcard_temp_clean.txt "$FINAL_OUTPUT"
+
+    # 4. Prepare for processing: Remove *. prefix
+    sed 's/^\*\.//' wildcard_temp_found.txt > wildcard_temp_targets.txt
+
+    # 5. Process these new domains
+    found_new_target=false
+    
+    while read -r target; do
+        # Check if we already processed this target to avoid infinite recursion
+        if ! grep -Fxq "$target" processed_tracking_list.tmp; then
+            echo "$target" >> processed_tracking_list.tmp
+            
+            # RECURSIVE CALL: Scan the extracted domain
+            process_domain "$target"
+            found_new_target=true
+        else
+            echo "Skipping $target (Already processed)"
+        fi
+    done < wildcard_temp_targets.txt
+
+    # If no new targets were processed in this iteration (all were duplicates), stop loop
+    if [ "$found_new_target" = false ]; then
+        break
+    fi
+done
+
+# Cleanup recursive temp files
+rm -f wildcard_temp_*.txt processed_tracking_list.tmp
+
 echo "------------------------------------------------"
 echo -e "${GREEN}Done. All unique subdomains saved to: $FINAL_OUTPUT${END}"
+echo -e "${GREEN}Wildcard domains saved to: $WILDCARD_OUTPUT${END}"
 
 # --- HTTPX Logic (Alive Check) ---
 if [ "$RUN_HTTPX" = true ]; then
@@ -217,7 +282,7 @@ if [ "$RUN_HTTPX" = true ]; then
         echo -e "${RED}[!] First httpx attempt failed. Retrying...${END}"
         
         # Fallback command (Retry)
-        if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt; then
+        if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o aliveSubs.txt; then
             echo -e "${RED}httpx error !${END}"
         fi
     fi
