@@ -3,6 +3,7 @@
 # --- Configuration & Banner ---
 FINAL_OUTPUT="all_subdomains.txt"
 EXCLUDE_LIST=""
+RUN_HTTPX=false 
 
 # Colors
 RED="\e[31m"
@@ -21,10 +22,8 @@ trap "rm -f temp_*.txt; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${E
 # --- Helper Functions ---
 
 # Check if a tool should be skipped
-# Returns 0 (true) if tool is allowed, 1 (false) if excluded
 should_run() {
     local tool_name=$1
-    # Check if tool_name exists in the comma-separated EXCLUDE_LIST
     if [[ ",$EXCLUDE_LIST," == *",$tool_name,"* ]]; then
         echo -e "${RED}[-] Skipping $tool_name (Excluded)${END}"
         return 1
@@ -66,7 +65,6 @@ run_amass() {
     local domain=$1
     if command -v amass &> /dev/null; then
         echo -e "${BOLD}[*] Running Amass (Passive)...${END}"
-        # Using passive mode for speed, similar to subenum
         amass enum -passive -norecursive -noalts -d "$domain" 1> temp_amass.txt 2>/dev/null
     fi
 }
@@ -75,7 +73,6 @@ run_crtsh() {
     should_run "crt" || return
     local domain=$1
     echo -e "${BOLD}[*] Fetching from crt.sh...${END}"
-    # Logic from subenum
     curl -sk "https://crt.sh/?q=%.$domain&output=json" | tr ',' '\n' | awk -F'"' '/name_value/ {gsub(/\*\./, "", $4); gsub(/\\n/,"\n",$4);print $4}' | sort -u > temp_crt.txt
 }
 
@@ -83,7 +80,6 @@ run_wayback() {
     should_run "wayback" || return
     local domain=$1
     echo -e "${BOLD}[*] Fetching from Wayback Machine...${END}"
-    # Logic from subenum
     curl -sk "http://web.archive.org/cdx/search/cdx?url=*.$domain&output=txt&fl=original&collapse=urlkey&page=" | awk -F/ '{gsub(/:.*/, "", $3); print $3}' | sort -u > temp_wayback.txt
 }
 
@@ -91,7 +87,6 @@ run_abuseipdb() {
     should_run "abuseipdb" || return
     local domain=$1
     echo -e "${BOLD}[*] Fetching from AbuseIPDB...${END}"
-    # Logic from subenum
     curl -s "https://www.abuseipdb.com/whois/$domain" -H "user-agent: firefox" -b "abuseipdb_session=" | grep -E '<li>\w.*</li>' | sed -E 's/<\/?li>//g' | sed -e "s/$/.$domain/" | sed 's/^[[:space:]]*//' | sort -u > temp_abuseipdb.txt
 }
 
@@ -131,8 +126,12 @@ process_domain() {
     # 2. Merge Results
     echo "Merging results for $domain into $FINAL_OUTPUT..."
     
-    # Concatenate all temp files, suppress errors, filter unique, append
-    cat temp_*.txt 2>/dev/null | awk 'NF' | anew "$FINAL_OUTPUT"
+    # Ensure the input domain itself is in the list
+    echo "$domain" | anew "$FINAL_OUTPUT"
+
+    # Concatenate all temp files, suppress errors
+    # Filter: Ensure lines contain at least one dot to be considered a domain/FQDN
+    cat temp_*.txt 2>/dev/null | awk 'NF' | grep -F "." | anew "$FINAL_OUTPUT"
 
     # 3. Cleanup for this domain
     rm -f temp_*.txt
@@ -149,7 +148,7 @@ fi
 # Parse Arguments
 domains=()
 
-while getopts "l:d:e:h" opt; do
+while getopts "l:d:e:rh" opt; do
     case $opt in
         l)
             if [[ -f $OPTARG ]]; then
@@ -167,17 +166,21 @@ while getopts "l:d:e:h" opt; do
             domains+=("$OPTARG")
             ;;
         e)
-            # Store exclusion list, remove spaces
             EXCLUDE_LIST=$(echo "$OPTARG" | tr -d ' ')
             echo -e "${RED}[!] Excluded Tools: $EXCLUDE_LIST${END}"
             ;;
+        r)
+            RUN_HTTPX=true
+            ;;
         h)
-            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2]"
+            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r]"
             echo "Available Tools to Exclude: Subfinder, Assetfinder, Findomain, Amass, crt, wayback, abuseipdb, AlienVault, urlscan"
+            echo "Options:"
+            echo "  -r   Run httpx on final output (Alive Check)"
             exit 0
             ;;
         *)
-            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2]"
+            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r]"
             exit 1
             ;;
     esac
@@ -196,3 +199,26 @@ done
 
 echo "------------------------------------------------"
 echo -e "${GREEN}Done. All unique subdomains saved to: $FINAL_OUTPUT${END}"
+
+# --- HTTPX Logic (Alive Check) ---
+if [ "$RUN_HTTPX" = true ]; then
+    echo "------------------------------------------------"
+    echo -e "${BOLD}[*] Running httpx (Alive Check)...${END}"
+    
+    # 1. Check and delete old aliveSubs.txt if it exists
+    if [ -f "aliveSubs.txt" ]; then
+        echo "Found old aliveSubs.txt. Removing it..."
+        rm "aliveSubs.txt"
+    fi
+
+    # 2. Run httpx with -silent
+    # First attempt
+    if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt; then
+        echo -e "${RED}[!] First httpx attempt failed. Retrying...${END}"
+        
+        # Fallback command (Retry)
+        if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt; then
+            echo -e "${RED}httpx error !${END}"
+        fi
+    fi
+fi
