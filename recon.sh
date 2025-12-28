@@ -10,6 +10,8 @@ RUN_HTTPX=false
 RED="\e[31m"
 GREEN="\e[32m"
 BOLD="\e[1m"
+BLUE="\e[34m"
+YELLOW="\e[33m"
 END="\e[0m"
 
 echo -e "${BOLD}${GREEN}"
@@ -139,21 +141,9 @@ process_domain() {
     rm -f temp_*.txt
 }
 
-# --- Initialization ---
+# --- Initialization & Arguments ---
 
-# Check/Remove old output
-if [ -f "$FINAL_OUTPUT" ]; then
-    echo "Found old $FINAL_OUTPUT. Removing it..."
-    rm "$FINAL_OUTPUT"
-fi
 
-# Initialize/Clear wildcard domains file
-if [ -f "$WILDCARD_OUTPUT" ]; then
-    echo "Found old $WILDCARD_OUTPUT. Removing it..."
-    rm "$WILDCARD_OUTPUT"
-fi
-
-# Parse Arguments
 domains=()
 
 while getopts "l:d:e:rh" opt; do
@@ -181,10 +171,23 @@ while getopts "l:d:e:rh" opt; do
             RUN_HTTPX=true
             ;;
         h)
-            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r]"
-            echo "Available Tools to Exclude: Subfinder, Assetfinder, Findomain, Amass, crt, wayback, abuseipdb, AlienVault, urlscan"
-            echo "Options:"
-            echo "  -r   Run httpx on final output (Alive Check)"
+            echo -e "${YELLOW}Usage:${END} $0 [OPTIONS]"
+            echo ""
+            echo -e "${BOLD}Target Selection:${END}"
+            echo -e "  -d ${BLUE}<domain>${END}   Target a single domain (e.g., example.com)"
+            echo -e "  -l ${BLUE}<file>${END}     Target a list of domains from a file"
+            echo ""
+            echo -e "${BOLD}Scan Options:${END}"
+            echo -e "  -r            Run ${BOLD}httpx${END} on final output (Alive Check)"
+            echo -e "  -e ${BLUE}<tools>${END}    Exclude specific tools (Comma separated)"
+            echo ""
+            echo -e "${BOLD}Available Tools to Exclude:${END}"
+            echo -e "  Subfinder, Assetfinder, Findomain, Amass, crt,"
+            echo -e "  wayback, abuseipdb, AlienVault, urlscan"
+            echo ""
+            echo -e "${BOLD}Example:${END}"
+            echo -e "  $0 -d example.com -r"
+            echo -e "  $0 -l targets.txt -e Amass,crt"
             exit 0
             ;;
         *)
@@ -198,6 +201,17 @@ done
 if [ ${#domains[@]} -eq 0 ]; then
     echo "Error: No domains provided. Use -l or -d."
     exit 1
+fi
+
+# --- Cleanup Old Output (Only runs if we are actually scanning) ---
+if [ -f "$FINAL_OUTPUT" ]; then
+    echo "Found old $FINAL_OUTPUT. Removing it..."
+    rm "$FINAL_OUTPUT"
+fi
+
+if [ -f "$WILDCARD_OUTPUT" ]; then
+    echo "Found old $WILDCARD_OUTPUT. Removing it..."
+    rm "$WILDCARD_OUTPUT"
 fi
 
 # Process Loop (Initial Pass)
@@ -277,11 +291,9 @@ if [ "$RUN_HTTPX" = true ]; then
     fi
 
     # 2. Run httpx with -silent
-    # First attempt
-    if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt; then
-        echo -e "${RED}[!] First httpx attempt failed. Retrying...${END}"
-        
-        # Fallback command (Retry)
+    # If first httpx fails, suppress error and try fallback immediately
+    if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt 2>/dev/null; then
+        # Fallback command (Retry) without showing error from previous attempt
         if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o aliveSubs.txt; then
             echo -e "${RED}httpx error !${END}"
         fi
