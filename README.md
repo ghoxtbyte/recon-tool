@@ -14,6 +14,7 @@ A simple yet powerful bash-based subdomain reconnaissance tool for bug bounty an
   - urlscan.io
   - AbuseIPDB
   - WayBackMachine
+  - httpx
 - Merge and de-duplicate results automatically
 - CLI support for both single domains and domain lists
 
@@ -33,7 +34,7 @@ For a **single domain**:
 ```bash
 chmod +x recon.sh
 ./recon.sh -h
-./recon.sh -d example.com
+./recon.sh -d example.com -r # Check which domains are alive using httpx
 ```
 
 For a **list of domains** (one per line):
@@ -64,7 +65,7 @@ Tools required (installed by `setup.sh`):
 * [assetfinder](https://github.com/tomnomnom/assetfinder)
 * [findomain](https://github.com/Edu4rdSHL/findomain)
 * [amass](https://github.com/OWASP/Amass)
-* jq, curl, grep, sed, anew, ffuf, arjun, etc.
+* jq, curl, grep, sed, anew, httpx, etc.
 
 ## 📄 License
 
