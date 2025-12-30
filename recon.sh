@@ -154,7 +154,6 @@ while getopts "l:d:e:rh" opt; do
                     line=$(echo "$line" | xargs) # Trim whitespace
                     [[ -z "$line" ]] && continue
                     
-                    # --- FIXED LOGIC FOR INPUT WILDCARDS ---
                     # If input is *.example.com, treat it as example.com for processing
                     # but ensure it's logged as a wildcard first.
                     if [[ "$line" == \*\.* ]]; then
