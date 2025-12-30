@@ -153,7 +153,21 @@ while getopts "l:d:e:rh" opt; do
                 while IFS= read -r line; do
                     line=$(echo "$line" | xargs) # Trim whitespace
                     [[ -z "$line" ]] && continue
-                    domains+=("$line")
+                    
+                    # --- FIXED LOGIC FOR INPUT WILDCARDS ---
+                    # If input is *.example.com, treat it as example.com for processing
+                    # but ensure it's logged as a wildcard first.
+                    if [[ "$line" == \*\.* ]]; then
+                        # 1. Log the wildcard domain directly
+                        echo "$line" | anew "$WILDCARD_OUTPUT"
+                        
+                        # 2. Strip the wildcard prefix for processing
+                        clean_domain=$(echo "$line" | sed 's/^\*\.//')
+                        domains+=("$clean_domain")
+                    else
+                        # Normal domain
+                        domains+=("$line")
+                    fi
                 done < "$OPTARG"
             else
                 echo "Error: File $OPTARG not found."
@@ -161,7 +175,15 @@ while getopts "l:d:e:rh" opt; do
             fi
             ;;
         d)
-            domains+=("$OPTARG")
+            # Handle single domain argument similarly if user manually enters *.domain
+            input_domain=$OPTARG
+            if [[ "$input_domain" == \*\.* ]]; then
+                echo "$input_domain" | anew "$WILDCARD_OUTPUT"
+                clean_domain=$(echo "$input_domain" | sed 's/^\*\.//')
+                domains+=("$clean_domain")
+            else
+                domains+=("$input_domain")
+            fi
             ;;
         e)
             EXCLUDE_LIST=$(echo "$OPTARG" | tr -d ' ')
@@ -209,10 +231,21 @@ if [ -f "$FINAL_OUTPUT" ]; then
     rm "$FINAL_OUTPUT"
 fi
 
-if [ -f "$WILDCARD_OUTPUT" ]; then
-    echo "Found old $WILDCARD_OUTPUT. Removing it..."
-    rm "$WILDCARD_OUTPUT"
-fi
+# Note: We do NOT remove WILDCARD_OUTPUT here if it was populated during argument parsing (the -l loop)
+# But we should ensure we don't keep VERY old runs if the user didn't use -l with wildcards.
+# To be safe: if WILDCARD_OUTPUT exists and is empty, we leave it. If it has content from -l, we keep it.
+# Actually, standard behavior: clear old run files. But we just added to it in the loop above.
+# So we only clear it IF we haven't added anything yet. 
+# Simplification: We already handled `anew` in the loop. We should ensure we don't delete what we just added.
+# So we skip explicit deletion of WILDCARD_OUTPUT here to preserve -l inputs. 
+# Instead, we just ensure it's created or appended to.
+
+# --- DEDUPLICATION ---
+# Prevent double processing (e.g. if file had example.com AND *.example.com)
+# We sort and unique the array before the main loop.
+IFS=$'\n' read -d '' -r -a unique_domains <<< "$(printf "%s\n" "${domains[@]}" | sort -u)"
+domains=("${unique_domains[@]}")
+
 
 # Process Loop (Initial Pass)
 for domain in "${domains[@]}"; do
@@ -222,6 +255,11 @@ done
 # --- Wildcard Recursive Processing ---
 # Tracks scanned domains to prevent infinite loops on the same domain
 touch processed_tracking_list.tmp
+
+# Add initial domains to tracking list to avoid re-scanning them immediately
+for domain in "${domains[@]}"; do
+    echo "$domain" >> processed_tracking_list.tmp
+done
 
 echo "------------------------------------------------"
 echo -e "${BOLD}${GREEN}[+] Checking for Wildcard (*) Domains to process recursively...${END}"
