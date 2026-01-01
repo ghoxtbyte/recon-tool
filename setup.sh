@@ -148,15 +148,7 @@ rm -rf paramspider # Cleanup source after install if pip installed it globally/u
 
 # --- 7. Install VulnX ---
 echo -e "${GREEN}[*] Installing VulnX...${NC}"
-# Installing to user's home/tools directory to keep it organized
-mkdir -p ~/tools
-cd ~/tools
-if [ -d "VulnX" ]; then rm -rf VulnX; fi
-git clone https://github.com/anouarbensaad/vulnx.git
-cd VulnX
-chmod +x install.sh
-./install.sh
-cd ../.. 
+go install github.com/projectdiscovery/cvemap/cmd/vulnx@latest
 
 # --- 8. Download SecLists ---
 echo -e "${GREEN}[*] Downloading SecLists (This may take a while)...${NC}"
