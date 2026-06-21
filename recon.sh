@@ -108,6 +108,21 @@ run_urlscan() {
     curl -s "https://urlscan.io/api/v1/search/?q=domain:$domain&size=10000" | jq -r '.results[]?.page?.domain' | grep -E "^[a-zA-Z0-9.-]+\.$domain$" > temp_urlscan.txt
 }
 
+run_chaos() {
+    should_run "chaos" || return
+    
+    # Check if PDCP_API_KEY is exported/set
+    if [[ -z "$PDCP_API_KEY" ]]; then
+        return
+    fi
+
+    local domain=$1
+    if command -v chaos &> /dev/null; then
+        echo -e "${BOLD}[*] Running chaos...${END}"
+        chaos -d "$domain" -silent > temp_chaos.txt 2>/dev/null
+    fi
+}
+
 
 # --- Main Processing Logic ---
 
@@ -126,6 +141,7 @@ process_domain() {
     run_abuseipdb "$domain"
     run_alienvault "$domain"
     run_urlscan "$domain"
+    run_chaos "$domain"
 
     # 2. Merge Results
     echo "Merging results for $domain into $FINAL_OUTPUT..."
@@ -204,7 +220,7 @@ while getopts "l:d:e:rh" opt; do
             echo ""
             echo -e "${BOLD}Available Tools to Exclude:${END}"
             echo -e "  Subfinder, Assetfinder, Findomain, Amass, crt,"
-            echo -e "  wayback, abuseipdb, AlienVault, urlscan"
+            echo -e "  wayback, abuseipdb, AlienVault, urlscan, chaos"
             echo ""
             echo -e "${BOLD}Example:${END}"
             echo -e "  $0 -d example.com -r"
@@ -229,15 +245,6 @@ if [ -f "$FINAL_OUTPUT" ]; then
     echo "Found old $FINAL_OUTPUT. Removing it..."
     rm "$FINAL_OUTPUT"
 fi
-
-# Note: We do NOT remove WILDCARD_OUTPUT here if it was populated during argument parsing (the -l loop)
-# But we should ensure we don't keep VERY old runs if the user didn't use -l with wildcards.
-# To be safe: if WILDCARD_OUTPUT exists and is empty, we leave it. If it has content from -l, we keep it.
-# Actually, standard behavior: clear old run files. But we just added to it in the loop above.
-# So we only clear it IF we haven't added anything yet. 
-# Simplification: We already handled `anew` in the loop. We should ensure we don't delete what we just added.
-# So we skip explicit deletion of WILDCARD_OUTPUT here to preserve -l inputs. 
-# Instead, we just ensure it's created or appended to.
 
 # --- DEDUPLICATION ---
 # Prevent double processing (e.g. if file had example.com AND *.example.com)
