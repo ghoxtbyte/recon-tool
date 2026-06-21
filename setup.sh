@@ -122,6 +122,7 @@ GO_TOOLS=(
     "github.com/Emoe/kxss@latest"
     "github.com/hahwul/dalfox/v2@latest"
     "github.com/owasp-amass/amass/v4/...@master"
+    "github.com/projectdiscovery/chaos-client/cmd/chaos@latest"
 )
 
 for tool in "${GO_TOOLS[@]}"; do
