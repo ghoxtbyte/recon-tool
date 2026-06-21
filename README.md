@@ -7,6 +7,7 @@ A simple yet powerful bash-based subdomain reconnaissance tool for bug bounty an
 - Collect subdomains from:
   - subfinder
   - assetfinder
+  - chaos-client
   - crt.sh
   - Amass
   - Findomain
@@ -63,6 +64,7 @@ Tools required (installed by `setup.sh`):
 
 * [subfinder](https://github.com/projectdiscovery/subfinder)
 * [assetfinder](https://github.com/tomnomnom/assetfinder)
+* [chaos](https://github.com/projectdiscovery/chaos-client)
 * [findomain](https://github.com/Edu4rdSHL/findomain)
 * [amass](https://github.com/OWASP/Amass)
 * jq, curl, grep, sed, anew, httpx, etc.
