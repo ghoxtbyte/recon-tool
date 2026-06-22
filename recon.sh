@@ -21,7 +21,7 @@ echo "    + Advanced Right-to-Left Wildcard Engine"
 echo -e "${END}"
 
 # --- Safety Trap ---
-trap "rm -f temp_*.txt wildcard_temp_*.txt temp_matches.txt active_patterns.tmp next_wildcards.tmp temp_pending_wildcards.tmp processed_tracking_list.tmp; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${END}'; exit" INT TERM
+trap "rm -f temp_*.txt wildcard_temp_*.txt temp_matches.txt active_patterns.tmp next_wildcards.tmp temp_pending_wildcards.tmp processed_tracking_list.tmp temp_nosave_*.txt; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${END}'; exit" INT TERM
 
 # --- Helper Functions ---
 
@@ -182,8 +182,6 @@ while getopts "l:d:e:rh" opt; do
                     [[ -z "$line" ]] && continue
                     
                     if [[ "$line" == *"*"* ]]; then
-                        # Send complex wildcards directly to the new engine
-                        echo "$line" | anew "$WILDCARD_OUTPUT"
                         echo "$line" >> temp_pending_wildcards.tmp
                     else
                         domains+=("$line")
@@ -197,7 +195,6 @@ while getopts "l:d:e:rh" opt; do
         d)
             input_domain=$OPTARG
             if [[ "$input_domain" == *"*"* ]]; then
-                echo "$input_domain" | anew "$WILDCARD_OUTPUT"
                 echo "$input_domain" >> temp_pending_wildcards.tmp
             else
                 domains+=("$input_domain")
@@ -242,22 +239,29 @@ fi
 
 # --- Output Setup & Cleanup (Only runs if we are actually scanning) ---
 
+if [ "$NO_SAVE" = true ]; then
+    # Completely isolate this run to protect user's existing files
+    FINAL_OUTPUT="temp_nosave_final_$$.txt"
+    WILDCARD_OUTPUT="temp_nosave_wildcard_$$.txt"
+else
+    # Timestamp logic to preserve old data
+    if [ -f "$FINAL_OUTPUT" ]; then
+        TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
+        FINAL_OUTPUT="all_subdomains-${TIMESTAMP}.txt"
+        echo -e "${YELLOW}[*] Found old all_subdomains.txt. New results will be saved to: $FINAL_OUTPUT${END}"
+    fi
 
-if [ "$NO_SAVE" = false ] && [ -f "$FINAL_OUTPUT" ]; then
-    TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
-    FINAL_OUTPUT="all_subdomains-${TIMESTAMP}.txt"
-    echo -e "${YELLOW}[*] Found old all_subdomains.txt. New results will be saved to: $FINAL_OUTPUT${END}"
+    # Cleanup old wildcard file so we don't mix old wildcards with new run
+    if [ -f "$WILDCARD_OUTPUT" ]; then
+        echo "Found old $WILDCARD_OUTPUT. Removing it..."
+        rm "$WILDCARD_OUTPUT"
+    fi
 fi
 
-
-if [ -f "$WILDCARD_OUTPUT" ]; then
-    echo "Found old $WILDCARD_OUTPUT. Removing it..."
-    rm "$WILDCARD_OUTPUT"
-fi
-
-# Push pending wildcards from input directly into FINAL_OUTPUT so the engine picks them up
+# Push pending wildcards from input directly into outputs
 if [ -f temp_pending_wildcards.tmp ]; then
     cat temp_pending_wildcards.tmp >> "$FINAL_OUTPUT"
+    cat temp_pending_wildcards.tmp | anew "$WILDCARD_OUTPUT" > /dev/null
     rm temp_pending_wildcards.tmp
 fi
 
@@ -410,13 +414,18 @@ if [ "$RUN_HTTPX" = true ]; then
     echo "------------------------------------------------"
     echo -e "${BOLD}[*] Running httpx (Alive Check)...${END}"
     
-    if [ -f "aliveSubs.txt" ]; then
-        echo "Found old aliveSubs.txt. Removing it..."
-        rm "aliveSubs.txt"
+    if [ "$NO_SAVE" = true ]; then
+        HTTPX_OUT="temp_nosave_aliveSubs_$$.txt"
+    else
+        HTTPX_OUT="aliveSubs.txt"
+        if [ -f "$HTTPX_OUT" ]; then
+            echo "Found old $HTTPX_OUT. Removing it..."
+            rm "$HTTPX_OUT"
+        fi
     fi
 
-    if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt 2>/dev/null; then
-        if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o aliveSubs.txt; then
+    if ! cat "$FINAL_OUTPUT" | httpx -silent -o "$HTTPX_OUT" 2>/dev/null; then
+        if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o "$HTTPX_OUT"; then
             echo -e "${RED}httpx error !${END}"
         fi
     fi
@@ -431,20 +440,19 @@ if [ "$NO_SAVE" = true ]; then
     echo -e "\n${BOLD}${GREEN}[+] Discovered Subdomains:${END}"
     cat "$FINAL_OUTPUT" 2>/dev/null
     
-    if [ "$RUN_HTTPX" = true ] && [ -f "aliveSubs.txt" ]; then
+    if [ "$RUN_HTTPX" = true ] && [ -f "$HTTPX_OUT" ]; then
         echo -e "\n${BOLD}${BLUE}[+] Alive Subdomains (HTTPX):${END}"
-        cat "aliveSubs.txt" 2>/dev/null
-        rm -f "aliveSubs.txt"
+        cat "$HTTPX_OUT" 2>/dev/null
     fi
     
     
-    rm -f "$FINAL_OUTPUT" "$WILDCARD_OUTPUT"
+    rm -f "$FINAL_OUTPUT" "$WILDCARD_OUTPUT" "$HTTPX_OUT" 2>/dev/null
 else
     echo -e "${GREEN}Done. All unique subdomains saved to: $FINAL_OUTPUT${END}"
     if [ -f "$WILDCARD_OUTPUT" ]; then
         echo -e "${GREEN}Wildcard domains saved to: $WILDCARD_OUTPUT${END}"
     fi
     if [ "$RUN_HTTPX" = true ]; then
-        echo -e "${GREEN}Alive subdomains saved to: aliveSubs.txt${END}"
+        echo -e "${GREEN}Alive subdomains saved to: $HTTPX_OUT${END}"
     fi
 fi
