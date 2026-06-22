@@ -160,6 +160,18 @@ process_domain() {
 # --- Initialization & Arguments ---
 
 domains=()
+NO_SAVE=false
+
+# Filter out --no-save before passing to getopts to prevent illegal option errors
+args=()
+for arg in "$@"; do
+    if [ "$arg" == "--no-save" ]; then
+        NO_SAVE=true
+    else
+        args+=("$arg")
+    fi
+done
+set -- "${args[@]}"
 
 while getopts "l:d:e:rh" opt; do
     case $opt in
@@ -208,14 +220,15 @@ while getopts "l:d:e:rh" opt; do
             echo -e "${BOLD}Scan Options:${END}"
             echo -e "  -r            Run ${BOLD}httpx${END} on final output (Alive Check)"
             echo -e "  -e ${BLUE}<tools>${END}    Exclude specific tools (Comma separated)"
+            echo -e "  --no-save     Do not save output to files (prints to stdout instead)"
             echo ""
             echo -e "${BOLD}Example:${END}"
             echo -e "  $0 -d example.com -r"
-            echo -e "  $0 -d \"*.test1.*.hello.com\""
+            echo -e "  $0 -d \"*.test1.*.hello.com\" --no-save"
             exit 0
             ;;
         *)
-            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r]"
+            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r] [--no-save]"
             exit 1
             ;;
     esac
@@ -227,10 +240,19 @@ if [ ${#domains[@]} -eq 0 ] && [ ! -f temp_pending_wildcards.tmp ]; then
     exit 1
 fi
 
-# --- Cleanup Old Output (Only runs if we are actually scanning) ---
-if [ -f "$FINAL_OUTPUT" ]; then
-    echo "Found old $FINAL_OUTPUT. Removing it..."
-    rm "$FINAL_OUTPUT"
+# --- Output Setup & Cleanup (Only runs if we are actually scanning) ---
+
+
+if [ "$NO_SAVE" = false ] && [ -f "$FINAL_OUTPUT" ]; then
+    TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
+    FINAL_OUTPUT="all_subdomains-${TIMESTAMP}.txt"
+    echo -e "${YELLOW}[*] Found old all_subdomains.txt. New results will be saved to: $FINAL_OUTPUT${END}"
+fi
+
+
+if [ -f "$WILDCARD_OUTPUT" ]; then
+    echo "Found old $WILDCARD_OUTPUT. Removing it..."
+    rm "$WILDCARD_OUTPUT"
 fi
 
 # Push pending wildcards from input directly into FINAL_OUTPUT so the engine picks them up
@@ -383,10 +405,6 @@ done
 # Cleanup recursive temp files
 rm -f wildcard_temp_*.txt processed_tracking_list.tmp temp_pending_wildcards.tmp active_patterns.tmp next_wildcards.tmp temp_matches.txt
 
-echo "------------------------------------------------"
-echo -e "${GREEN}Done. All unique subdomains saved to: $FINAL_OUTPUT${END}"
-echo -e "${GREEN}Wildcard domains saved to: $WILDCARD_OUTPUT${END}"
-
 # --- HTTPX Logic (Alive Check) ---
 if [ "$RUN_HTTPX" = true ]; then
     echo "------------------------------------------------"
@@ -401,5 +419,32 @@ if [ "$RUN_HTTPX" = true ]; then
         if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o aliveSubs.txt; then
             echo -e "${RED}httpx error !${END}"
         fi
+    fi
+fi
+
+# --- Final Output & Cleanup ---
+echo "------------------------------------------------"
+
+if [ "$NO_SAVE" = true ]; then
+    echo -e "${YELLOW}[!] --no-save enabled. Printing results to terminal and removing files...${END}"
+    
+    echo -e "\n${BOLD}${GREEN}[+] Discovered Subdomains:${END}"
+    cat "$FINAL_OUTPUT" 2>/dev/null
+    
+    if [ "$RUN_HTTPX" = true ] && [ -f "aliveSubs.txt" ]; then
+        echo -e "\n${BOLD}${BLUE}[+] Alive Subdomains (HTTPX):${END}"
+        cat "aliveSubs.txt" 2>/dev/null
+        rm -f "aliveSubs.txt"
+    fi
+    
+    
+    rm -f "$FINAL_OUTPUT" "$WILDCARD_OUTPUT"
+else
+    echo -e "${GREEN}Done. All unique subdomains saved to: $FINAL_OUTPUT${END}"
+    if [ -f "$WILDCARD_OUTPUT" ]; then
+        echo -e "${GREEN}Wildcard domains saved to: $WILDCARD_OUTPUT${END}"
+    fi
+    if [ "$RUN_HTTPX" = true ]; then
+        echo -e "${GREEN}Alive subdomains saved to: aliveSubs.txt${END}"
     fi
 fi
