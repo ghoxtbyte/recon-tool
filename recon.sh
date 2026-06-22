@@ -17,11 +17,11 @@ END="\e[0m"
 echo -e "${BOLD}${GREEN}"
 echo "    ULTIMATE RECON TOOL (Merged Edition)"
 echo "    Integrates Logic from SubEnum & Recon"
-echo "    + Wildcard Recursive Scanning"
+echo "    + Advanced Right-to-Left Wildcard Engine"
 echo -e "${END}"
 
 # --- Safety Trap ---
-trap "rm -f temp_*.txt wildcard_temp_*.txt; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${END}'; exit" INT TERM
+trap "rm -f temp_*.txt wildcard_temp_*.txt temp_matches.txt active_patterns.tmp next_wildcards.tmp temp_pending_wildcards.tmp processed_tracking_list.tmp; echo -e '\n${RED}[!] Interrupted. Temp files cleaned.${END}'; exit" INT TERM
 
 # --- Helper Functions ---
 
@@ -159,7 +159,6 @@ process_domain() {
 
 # --- Initialization & Arguments ---
 
-
 domains=()
 
 while getopts "l:d:e:rh" opt; do
@@ -170,17 +169,11 @@ while getopts "l:d:e:rh" opt; do
                     line=$(echo "$line" | xargs) # Trim whitespace
                     [[ -z "$line" ]] && continue
                     
-                    # If input is *.example.com, treat it as example.com for processing
-                    # but ensure it's logged as a wildcard first.
-                    if [[ "$line" == \*\.* ]]; then
-                        # 1. Log the wildcard domain directly
+                    if [[ "$line" == *"*"* ]]; then
+                        # Send complex wildcards directly to the new engine
                         echo "$line" | anew "$WILDCARD_OUTPUT"
-                        
-                        # 2. Strip the wildcard prefix for processing
-                        clean_domain=$(echo "$line" | sed 's/^\*\.//')
-                        domains+=("$clean_domain")
+                        echo "$line" >> temp_pending_wildcards.tmp
                     else
-                        # Normal domain
                         domains+=("$line")
                     fi
                 done < "$OPTARG"
@@ -190,12 +183,10 @@ while getopts "l:d:e:rh" opt; do
             fi
             ;;
         d)
-            # Handle single domain argument similarly if user manually enters *.domain
             input_domain=$OPTARG
-            if [[ "$input_domain" == \*\.* ]]; then
+            if [[ "$input_domain" == *"*"* ]]; then
                 echo "$input_domain" | anew "$WILDCARD_OUTPUT"
-                clean_domain=$(echo "$input_domain" | sed 's/^\*\.//')
-                domains+=("$clean_domain")
+                echo "$input_domain" >> temp_pending_wildcards.tmp
             else
                 domains+=("$input_domain")
             fi
@@ -218,13 +209,9 @@ while getopts "l:d:e:rh" opt; do
             echo -e "  -r            Run ${BOLD}httpx${END} on final output (Alive Check)"
             echo -e "  -e ${BLUE}<tools>${END}    Exclude specific tools (Comma separated)"
             echo ""
-            echo -e "${BOLD}Available Tools to Exclude:${END}"
-            echo -e "  Subfinder, Assetfinder, Findomain, Amass, crt,"
-            echo -e "  wayback, abuseipdb, AlienVault, urlscan, chaos"
-            echo ""
             echo -e "${BOLD}Example:${END}"
             echo -e "  $0 -d example.com -r"
-            echo -e "  $0 -l targets.txt -e Amass,crt"
+            echo -e "  $0 -d \"*.test1.*.hello.com\""
             exit 0
             ;;
         *)
@@ -235,7 +222,7 @@ while getopts "l:d:e:rh" opt; do
 done
 
 # Validation
-if [ ${#domains[@]} -eq 0 ]; then
+if [ ${#domains[@]} -eq 0 ] && [ ! -f temp_pending_wildcards.tmp ]; then
     echo "Error: No domains provided. Use -l or -d."
     exit 1
 fi
@@ -246,78 +233,155 @@ if [ -f "$FINAL_OUTPUT" ]; then
     rm "$FINAL_OUTPUT"
 fi
 
+# Push pending wildcards from input directly into FINAL_OUTPUT so the engine picks them up
+if [ -f temp_pending_wildcards.tmp ]; then
+    cat temp_pending_wildcards.tmp >> "$FINAL_OUTPUT"
+    rm temp_pending_wildcards.tmp
+fi
+
 # --- DEDUPLICATION ---
-# Prevent double processing (e.g. if file had example.com AND *.example.com)
-# We sort and unique the array before the main loop.
 IFS=$'\n' read -d '' -r -a unique_domains <<< "$(printf "%s\n" "${domains[@]}" | sort -u)"
 domains=("${unique_domains[@]}")
 
-
-# Process Loop (Initial Pass)
+# Process Loop (Initial Pass for normal domains)
 for domain in "${domains[@]}"; do
     process_domain "$domain"
 done
 
-# --- Wildcard Recursive Processing ---
-# Tracks scanned domains to prevent infinite loops on the same domain
+# --- Advanced Right-to-Left Wildcard Engine ---
 touch processed_tracking_list.tmp
 
-# Add initial domains to tracking list to avoid re-scanning them immediately
 for domain in "${domains[@]}"; do
     echo "$domain" >> processed_tracking_list.tmp
 done
 
 echo "------------------------------------------------"
-echo -e "${BOLD}${GREEN}[+] Checking for Wildcard (*) Domains to process recursively...${END}"
+echo -e "${BOLD}${GREEN}[+] Checking for Wildcard (*) Domains to process (Right-to-Left)...${END}"
 
 while true; do
-    # 1. Find lines starting with *. in the main output
-    if ! grep -q "^\*\." "$FINAL_OUTPUT"; then
-        # No more wildcards found, break the loop
+    # 1. Check if there are any active wildcards left in the final output
+    if ! grep -q "\*" "$FINAL_OUTPUT" 2>/dev/null; then
         break
     fi
 
-    # Extract wildcards
-    grep "^\*\." "$FINAL_OUTPUT" | sort -u > wildcard_temp_found.txt
-    
-    # Show what we found
+    grep "\*" "$FINAL_OUTPUT" | sort -u > wildcard_temp_found.txt
     count=$(wc -l < wildcard_temp_found.txt)
-    echo -e "${BOLD}Found $count wildcard domain(s). Extracting and Re-scanning...${END}"
+    echo -e "${BOLD}Found $count wildcard pattern(s). Analyzing and Re-scanning...${END}"
 
-    # 2. Append them to WILDCARD_OUTPUT
-    cat wildcard_temp_found.txt | anew "$WILDCARD_OUTPUT"
+    # Append to logging list
+    cat wildcard_temp_found.txt | anew "$WILDCARD_OUTPUT" > /dev/null
 
-    # 3. Remove them from FINAL_OUTPUT (Sanitize the main list)
-    grep -v "^\*\." "$FINAL_OUTPUT" > wildcard_temp_clean.txt
+    # Remove wildcards from main final output so they don't break httpx or loop infinitely
+    grep -v "\*" "$FINAL_OUTPUT" > wildcard_temp_clean.txt
     mv wildcard_temp_clean.txt "$FINAL_OUTPUT"
 
-    # 4. Prepare for processing: Remove *. prefix
-    sed 's/^\*\.//' wildcard_temp_found.txt > wildcard_temp_targets.txt
+    > wildcard_temp_targets.txt
+    > active_patterns.tmp
 
-    # 5. Process these new domains
+    # 2. Extract safe "Base Domains" to scan from the wildcard patterns
+    while read -r pattern; do
+        [ -z "$pattern" ] && continue
+        
+        echo "$pattern" >> active_patterns.tmp
+
+        B="${pattern##*\*}"
+        clean_part="${B#\.}"
+        
+        # Determine the safest part of the string to pass to Recon Tools
+        if [[ "$pattern" =~ ^\*\.[a-zA-Z0-9.-]+$ ]]; then
+            echo "${pattern#\*.}" >> wildcard_temp_targets.txt
+        else
+            if [[ "$clean_part" != *"."* ]] || [[ $(echo "$clean_part" | grep -o "\." | wc -l) -eq 0 ]]; then
+                echo "$pattern" | sed 's/\*//g' | sed 's/\.\./\./g' | sed 's/^\.//' >> wildcard_temp_targets.txt
+            else
+                echo "$clean_part" >> wildcard_temp_targets.txt
+            fi
+        fi
+    done < wildcard_temp_found.txt
+
+    # 3. Process the extracted Base Domains
     found_new_target=false
-    
     while read -r target; do
-        # Check if we already processed this target to avoid infinite recursion
+        [ -z "$target" ] && continue
         if ! grep -Fxq "$target" processed_tracking_list.tmp; then
             echo "$target" >> processed_tracking_list.tmp
-            
-            # RECURSIVE CALL: Scan the extracted domain
             process_domain "$target"
             found_new_target=true
         else
-            echo "Skipping $target (Already processed)"
+            echo "Skipping base target $target (Already processed)"
         fi
     done < wildcard_temp_targets.txt
 
-    # If no new targets were processed in this iteration (all were duplicates), stop loop
+    # 4. Pattern Substitution: Map discovered domains back to original wildcards
+    > next_wildcards.tmp
+    if [ -f active_patterns.tmp ]; then
+        while read -r pattern; do
+            B="${pattern##*\*}"
+            A="${pattern%\**}"
+            L="${A##*\*}"
+            
+            B_esc=$(echo "$B" | sed 's/\./\\./g')
+            
+            # Find newly discovered domains that match the rightmost section
+            if [ -z "$B" ]; then
+                L_esc=$(echo "$L" | sed 's/\./\\./g')
+                grep "^${L_esc}" "$FINAL_OUTPUT" 2>/dev/null > temp_matches.txt
+            else
+                grep "${B_esc}$" "$FINAL_OUTPUT" 2>/dev/null > temp_matches.txt
+            fi
+            
+            while read -r D; do
+                R="${D%${B}}"
+                [ -z "$R" ] && continue
+
+                if [ -z "$L" ]; then
+                    X="$R"
+                else
+                    if [[ "$R" == *"$L"* ]]; then
+                        X="${R##*$L}"
+                    else
+                        L_clean="${L#\.}"
+                        if [ -n "$L_clean" ] && [[ "$R" == *"$L_clean"* ]]; then
+                            X="${R##*$L_clean}"
+                        else
+                            X="$R"
+                        fi
+                    fi
+                fi
+
+                X="${X#\.}"
+                NEW_PATTERN="${A}${X}${B}"
+                
+                # If we successfully replaced a star, but more exist, cue it up for the next loop!
+                if [[ "$NEW_PATTERN" == *"*"* ]]; then
+                    if ! grep -Fxq "$NEW_PATTERN" "$WILDCARD_OUTPUT"; then
+                        echo "$NEW_PATTERN" >> next_wildcards.tmp
+                    fi
+                else
+                    # Fully resolved domain with NO stars left!
+                    echo "$NEW_PATTERN" >> "$FINAL_OUTPUT"
+                fi
+
+            done < temp_matches.txt
+        done < active_patterns.tmp
+        rm -f active_patterns.tmp temp_matches.txt
+    fi
+
+    # Push newly generated wildcard patterns to FINAL_OUTPUT to trigger the next Right-to-Left phase
+    if [ -s next_wildcards.tmp ]; then
+        cat next_wildcards.tmp >> "$FINAL_OUTPUT"
+        found_new_target=true
+    fi
+    rm -f next_wildcards.tmp
+
+    # If no new domains were scanned AND no new substitutions were made, end recursion to prevent infinite loops.
     if [ "$found_new_target" = false ]; then
         break
     fi
 done
 
 # Cleanup recursive temp files
-rm -f wildcard_temp_*.txt processed_tracking_list.tmp
+rm -f wildcard_temp_*.txt processed_tracking_list.tmp temp_pending_wildcards.tmp active_patterns.tmp next_wildcards.tmp temp_matches.txt
 
 echo "------------------------------------------------"
 echo -e "${GREEN}Done. All unique subdomains saved to: $FINAL_OUTPUT${END}"
@@ -328,16 +392,12 @@ if [ "$RUN_HTTPX" = true ]; then
     echo "------------------------------------------------"
     echo -e "${BOLD}[*] Running httpx (Alive Check)...${END}"
     
-    # 1. Check and delete old aliveSubs.txt if it exists
     if [ -f "aliveSubs.txt" ]; then
         echo "Found old aliveSubs.txt. Removing it..."
         rm "aliveSubs.txt"
     fi
 
-    # 2. Run httpx with -silent
-    # If first httpx fails, suppress error and try fallback immediately
     if ! cat "$FINAL_OUTPUT" | httpx -silent -o aliveSubs.txt 2>/dev/null; then
-        # Fallback command (Retry) without showing error from previous attempt
         if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o aliveSubs.txt; then
             echo -e "${RED}httpx error !${END}"
         fi
