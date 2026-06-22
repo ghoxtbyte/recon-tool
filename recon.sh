@@ -240,18 +240,28 @@ fi
 # --- Output Setup & Cleanup (Only runs if we are actually scanning) ---
 
 if [ "$NO_SAVE" = true ]; then
-    # Completely isolate this run to protect user's existing files
+    
     FINAL_OUTPUT="temp_nosave_final_$$.txt"
     WILDCARD_OUTPUT="temp_nosave_wildcard_$$.txt"
+    HTTPX_OUT="temp_nosave_aliveSubs_$$.txt"
 else
-    # Timestamp logic to preserve old data
+    TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
+    
+    
     if [ -f "$FINAL_OUTPUT" ]; then
-        TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
         FINAL_OUTPUT="all_subdomains-${TIMESTAMP}.txt"
         echo -e "${YELLOW}[*] Found old all_subdomains.txt. New results will be saved to: $FINAL_OUTPUT${END}"
     fi
 
-    # Cleanup old wildcard file so we don't mix old wildcards with new run
+    
+    if [ -f "aliveSubs.txt" ]; then
+        HTTPX_OUT="aliveSubs-${TIMESTAMP}.txt"
+        echo -e "${YELLOW}[*] Found old aliveSubs.txt. New alive results will be saved to: $HTTPX_OUT${END}"
+    else
+        HTTPX_OUT="aliveSubs.txt"
+    fi
+
+    
     if [ -f "$WILDCARD_OUTPUT" ]; then
         echo "Found old $WILDCARD_OUTPUT. Removing it..."
         rm "$WILDCARD_OUTPUT"
@@ -413,16 +423,6 @@ rm -f wildcard_temp_*.txt processed_tracking_list.tmp temp_pending_wildcards.tmp
 if [ "$RUN_HTTPX" = true ]; then
     echo "------------------------------------------------"
     echo -e "${BOLD}[*] Running httpx (Alive Check)...${END}"
-    
-    if [ "$NO_SAVE" = true ]; then
-        HTTPX_OUT="temp_nosave_aliveSubs_$$.txt"
-    else
-        HTTPX_OUT="aliveSubs.txt"
-        if [ -f "$HTTPX_OUT" ]; then
-            echo "Found old $HTTPX_OUT. Removing it..."
-            rm "$HTTPX_OUT"
-        fi
-    fi
 
     if ! cat "$FINAL_OUTPUT" | httpx -silent -o "$HTTPX_OUT" 2>/dev/null; then
         if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -o "$HTTPX_OUT"; then
@@ -435,7 +435,7 @@ fi
 echo "------------------------------------------------"
 
 if [ "$NO_SAVE" = true ]; then
-    echo -e "${YELLOW}[!] --no-save enabled. Printing results to terminal and removing files...${END}"
+    echo -e "${YELLOW}[!] --no-save enabled. Printing results to terminal and removing temporary session files...${END}"
     
     echo -e "\n${BOLD}${GREEN}[+] Discovered Subdomains:${END}"
     cat "$FINAL_OUTPUT" 2>/dev/null
@@ -452,7 +452,7 @@ else
     if [ -f "$WILDCARD_OUTPUT" ]; then
         echo -e "${GREEN}Wildcard domains saved to: $WILDCARD_OUTPUT${END}"
     fi
-    if [ "$RUN_HTTPX" = true ]; then
+    if [ "$RUN_HTTPX" = true ] && [ -f "$HTTPX_OUT" ]; then
         echo -e "${GREEN}Alive subdomains saved to: $HTTPX_OUT${END}"
     fi
 fi
