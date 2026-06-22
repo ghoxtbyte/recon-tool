@@ -424,8 +424,8 @@ if [ "$RUN_HTTPX" = true ]; then
     echo "------------------------------------------------"
     echo -e "${BOLD}[*] Running httpx (Alive Check)...${END}"
 
-    if ! cat "$FINAL_OUTPUT" | httpx -silent -td -sc -title -ip -nc -o "$HTTPX_OUT" 2>/dev/null; then
-        if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -td -sc -title -ip -nc -o "$HTTPX_OUT"; then
+    if ! cat "$FINAL_OUTPUT" | httpx -silent -pipeline -http2 -vhost -sc -location -favicon -hash sha256 -title -server -td -cpe -wp -method -ws -ip -cname -asn -cdn -probe -nc -o "$HTTPX_OUT" 2>/dev/null; then
+        if ! cat "$FINAL_OUTPUT" | httpx-toolkit -silent -pipeline -http2 -vhost -sc -location -favicon -hash sha256 -title -server -td -cpe -wp -method -ws -ip -cname -asn -cdn -probe -nc -o "$HTTPX_OUT"; then
             echo -e "${RED}httpx error !${END}"
         fi
     fi
