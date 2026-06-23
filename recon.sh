@@ -265,8 +265,8 @@ else
     fi
 
     if [ -f "$WILDCARD_OUTPUT" ]; then
-        echo "Found old $WILDCARD_OUTPUT. Removing it..."
-        rm "$WILDCARD_OUTPUT"
+        WILDCARD_OUTPUT="wildcard_domains-${TIMESTAMP}.txt"
+        echo -e "${YELLOW}[*] Found old wildcard_domains.txt. New wildcards will be saved to: $WILDCARD_OUTPUT${END}"
     fi
 fi
 
