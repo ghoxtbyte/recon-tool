@@ -5,6 +5,7 @@ FINAL_OUTPUT="all_subdomains.txt"
 WILDCARD_OUTPUT="wildcard_domains.txt" 
 EXCLUDE_LIST=""
 RUN_HTTPX=false 
+RUN_HTTPX_CLEAN=false
 
 # Temporary Files Directory
 TMP_DIR="/tmp"
@@ -168,11 +169,14 @@ process_domain() {
 domains=()
 NO_SAVE=false
 
-# Filter out --no-save before passing to getopts to prevent illegal option errors
+# Filter out multi-character options before passing to getopts
 args=()
 for arg in "$@"; do
     if [ "$arg" == "--no-save" ]; then
         NO_SAVE=true
+    elif [ "$arg" == "-rc" ]; then
+        RUN_HTTPX_CLEAN=true
+        RUN_HTTPX=true
     else
         args+=("$arg")
     fi
@@ -221,17 +225,18 @@ while getopts "l:d:e:rh" opt; do
             echo -e "  -l ${BLUE}<file>${END}     Target a list of domains from a file"
             echo ""
             echo -e "${BOLD}Scan Options:${END}"
-            echo -e "  -r            Run ${BOLD}httpx${END} on final output (Alive Check)"
+            echo -e "  -r            Run ${BOLD}httpx${END} on final output (Alive Check - [SUCCESS] only)"
+            echo -e "  -rc           Run ${BOLD}httpx${END} cleanly (Alive Check - [SUCCESS] & [200] only)"
             echo -e "  -e ${BLUE}<tools>${END}    Exclude specific tools (Comma separated)"
             echo -e "  --no-save     Do not save output to files (prints to stdout instead)"
             echo ""
             echo -e "${BOLD}Example:${END}"
-            echo -e "  $0 -d example.com -r"
+            echo -e "  $0 -d example.com -rc"
             echo -e "  $0 -d \"*.test1.*.hello.com\" --no-save"
             exit 0
             ;;
         *)
-            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r] [--no-save]"
+            echo "Usage: $0 [-l list.txt] [-d domain.com] [-e Tool1,Tool2] [-r] [-rc] [--no-save]"
             exit 1
             ;;
     esac
@@ -426,13 +431,23 @@ if [ "$RUN_HTTPX" = true ]; then
     echo "------------------------------------------------"
     echo -e "${BOLD}[*] Running httpx (Alive Check)...${END}"
 
-    # Verify which command is available to securely perform the fallback and apply the filter
+    # Verify which command is available to securely perform the fallback
     if command -v httpx &> /dev/null; then
-        cat "$FINAL_OUTPUT" | httpx -silent -pipeline -http2 -vhost -sc -location -favicon -hash sha256 -title -server -td -cpe -wp -method -ws -ip -cname -asn -cdn -probe -nc 2>/dev/null | grep -v -E "\[FAILED\]|\[ERROR\]" | tee "$HTTPX_OUT" > /dev/null
+        HTTPX_BIN="httpx"
     elif command -v httpx-toolkit &> /dev/null; then
-        cat "$FINAL_OUTPUT" | httpx-toolkit -silent -pipeline -http2 -vhost -sc -location -favicon -hash sha256 -title -server -td -cpe -wp -method -ws -ip -cname -asn -cdn -probe -nc 2>/dev/null | grep -v -E "\[FAILED\]|\[ERROR\]" | tee "$HTTPX_OUT" > /dev/null
+        HTTPX_BIN="httpx-toolkit"
     else
         echo -e "${RED}[!] Error: Neither httpx nor httpx-toolkit is installed!${END}"
+        HTTPX_BIN=""
+    fi
+
+    if [ -n "$HTTPX_BIN" ]; then
+        if [ "$RUN_HTTPX_CLEAN" = true ]; then
+            echo -e "${BLUE}[*] Clean Mode: Filtering for [SUCCESS] and [200]...${END}"
+            cat "$FINAL_OUTPUT" | "$HTTPX_BIN" -silent -pipeline -http2 -vhost -sc -location -favicon -hash sha256 -title -server -td -cpe -wp -method -ws -ip -cname -asn -cdn -probe -nc 2>/dev/null | grep "\[SUCCESS\]" | grep "\[200\]" | tee "$HTTPX_OUT" > /dev/null
+        else
+            cat "$FINAL_OUTPUT" | "$HTTPX_BIN" -silent -pipeline -http2 -vhost -sc -location -favicon -hash sha256 -title -server -td -cpe -wp -method -ws -ip -cname -asn -cdn -probe -nc 2>/dev/null | grep "\[SUCCESS\]" | tee "$HTTPX_OUT" > /dev/null
+        fi
     fi
 fi
 
